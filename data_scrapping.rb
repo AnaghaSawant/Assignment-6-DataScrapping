@@ -18,17 +18,11 @@ class Parsing
 		category_links = []
 
 		category_name.each do |cat_name|
-			names = {
-						name: cat_name[1]
-					}
-			category_names.push(names)
+			category_names.push(cat_name[1])
 		end 
 
 		category_link.each do |cat_link|
-			links = {
-				link: cat_link[1]
-			}
-			category_links.push(links)
+			category_links.push(cat_link[1])
 		end
 	
 		category_names.each_with_index do |cat_name, index|
@@ -41,6 +35,17 @@ class Parsing
 		puts @all_category
 	end
 
+	def parsing_recipes
+		rec_names = []
+		@all_category.each do |i|
+			cat_link = Nokogiri::HTML(open(i[:link]))
+			rec_name = cat_link.to_html.scan(/(?<=(<span class="fixed-recipe-card__title-link">))(.*)(?=(<\/span>))/)
+			rec_name.each do |name|
+				rec_names.push(name[1])
+			end
+		end
+		puts rec_names
+	end
 end
 
 class DbConnection
@@ -53,6 +58,7 @@ class DbConnection
 
 	def insert_categories
 		db = SQLite3::Database.new 'allrecipes.db'
+		db.execute("DROP TABLE IF EXISTS allcategories")
 	    db.execute "CREATE TABLE allcategories(Id INTEGER PRIMARY KEY, Name TEXT,  Link TEXT)"
 
 		@parsed.all_category.each do |i|
