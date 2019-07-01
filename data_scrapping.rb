@@ -4,10 +4,11 @@ require 'open-uri'
 require 'sqlite3'
 
 class Parsing
-	attr_accessor :all_category
+	attr_accessor :all_category, :all_recipes
 
 	def initialize
 		@all_category = []
+		@all_recipes = []
 		@doc = Nokogiri::HTML(open("https://www.allrecipes.com/"))
 	end
 
@@ -37,14 +38,34 @@ class Parsing
 
 	def parsing_recipes
 		rec_names = []
+		rec_links = []
 		@all_category.each do |i|
 			cat_link = Nokogiri::HTML(open(i[:link]))
 			rec_name = cat_link.to_html.scan(/(?<=(<span class="fixed-recipe-card__title-link">))(.*)(?=(<\/span>))/)
+			rec_link = cat_link.to_html.scan(/(?<=(<h3 class="fixed-recipe-card__h3">))(.*)(?=(<\/h3>))/m)
 			rec_name.each do |name|
 				rec_names.push(name[1])
 			end
+
+			rec_link.each do |link|
+				# rec_links.push(link)
+				link.each do |item|
+					parsed_data = Nokogiri::HTML.parse(item)
+					recipe_link = parsed_data.to_html.scan(/(?<=(href=))((\"[a-zA-z0-9\"]).*)(?=(data-content))/)
+					recipe_link.each do |rec_ref|
+						rec_links.push(rec_ref[1])
+					end
+				end
+			end
 		end
-		puts rec_names
+		rec_names.each_with_index do |rec_name, index|
+				hash = {
+							rec_name: rec_name,
+							rec_link: rec_links[index]
+						}
+						@all_recipes.push(hash)
+		end
+		puts @all_recipes
 	end
 end
 
@@ -54,15 +75,15 @@ class DbConnection
 	def initialize
 		@parsed = Parsing.new
 		@parsed.parcing_categories
+		@db = SQLite3::Database.new 'allrecipes.db'
 	end
 
 	def insert_categories
-		db = SQLite3::Database.new 'allrecipes.db'
-		db.execute("DROP TABLE IF EXISTS allcategories")
-	    db.execute "CREATE TABLE allcategories(Id INTEGER PRIMARY KEY, Name TEXT,  Link TEXT)"
+		@db.execute("DROP TABLE IF EXISTS allcategories")
+	    @db.execute "CREATE TABLE allcategories(Id INTEGER PRIMARY KEY, Name TEXT,  Link TEXT)"
 
 		@parsed.all_category.each do |i|
-			db.execute("INSERT INTO allcategories(Name, Link) VALUES('#{i[:name]}',  '#{i[:link]}')")
+			@db.execute("INSERT INTO allcategories(Name, Link) VALUES('#{i[:name]}',  '#{i[:link]}')")
 		end
 	end
 end
