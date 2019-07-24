@@ -2,6 +2,7 @@ require 'rubygems'
 require 'nokogiri'
 require 'open-uri'
 require 'sqlite3'
+require 'byebug'
 
 class Parsing
 	attr_accessor :all_category, :all_recipes
@@ -9,6 +10,7 @@ class Parsing
 	def initialize
 		@all_category = []
 		@all_recipes = []
+		@all_recipes_info = []
 		@doc = Nokogiri::HTML(open("https://www.allrecipes.com/"))
 	end
 
@@ -37,36 +39,96 @@ class Parsing
 	end
 
 	def parsing_recipes
-		rec_names = []
-		rec_links = []
+		puts "in recipes"
 		@all_category.each do |i|
 			cat_link = Nokogiri::HTML(open(i[:link]))
 			rec_name = cat_link.to_html.scan(/(?<=(<span class="fixed-recipe-card__title-link">))(.*)(?=(<\/span>))/)
-			rec_link = cat_link.to_html.scan(/(?<=(<h3 class="fixed-recipe-card__h3">))(.*)(?=(<\/h3>))/m)
-			rec_name.each do |name|
-				rec_names.push(name[1])
-			end
+			rec_link = cat_link.to_html.scan(/<h3\s*class="fixed-recipe-card__h3\">\s*<a\s*href=\"(.*?)\"/)
+			rec_names = []
+			rec_links = []
+			counter = 0
+			count = 0
 
-			rec_link.each do |link|
-				# rec_links.push(link)
-				link.each do |item|
-					parsed_data = Nokogiri::HTML.parse(item)
-					recipe_link = parsed_data.to_html.scan(/(?<=(href=))((\"[a-zA-z0-9\"]).*)(?=(data-content))/)
-					recipe_link.each do |rec_ref|
-						rec_links.push(rec_ref[1])
-					end
+			rec_name.each do |name|
+				if counter <= 9
+					nam = name[1].gsub("\"","\'")
+					rec_names.push(nam)
+					counter = counter + 1
 				end
 			end
-		end
-		rec_names.each_with_index do |rec_name, index|
-				hash = {
-							rec_name: rec_name,
-							rec_link: rec_links[index]
-						}
-						@all_recipes.push(hash)
+			
+			rec_link.each do |link|
+				if count <= 9
+					li = link.join("")
+					rec_links.push(li)
+					count = count + 1
+				end
+			end
+			rec_names.each_with_index do |rec_name, index|
+				rec_hash = {
+								name: rec_name,
+								link: rec_links[index]
+							}
+							@all_recipes.push(rec_hash)
+			end
 		end
 		puts @all_recipes
+		# @all_recipes.each do |item|
+		# 	puts item[:name]
+		# end
 	end
+		
+	def parsing_recipes_info
+		puts "in recipes info"
+		@all_recipes_ingredients = []
+		@allrecipes_dirctions = []
+		@allrecipes_pretime = []
+		@allrecipes_cooktime = []
+		@allrecipes_readytime = []
+
+		@all_recipes.each do |i|
+			temp_ing = Array.new
+			temp_direct = Array.new
+			my_link = i[:link].join("")
+			recipe_link = Nokogiri::HTML(open(my_link))
+			rec_ingredient = recipe_link.to_html.scan(/(?<=(itemprop="recipeIngredient">))(.*)(?=(<\/span>))/)
+			rec_direction = recipe_link.to_html.scan(/<span\s*class="recipe-directions__list--item\">\s*(.*?)\s*<\/span>/)
+			prepare_time = recipe_link.to_html.scan(/<time\s*itemprop="prepTime"\s\w*=\"\w*\"><span\s*aria-hidden="true\"><span\s*class=\"prepTime__item--time\">\s*(.*?)<\/span>\s*(.?)<\/span><\/time>/)
+			cook_time = recipe_link.to_html.scan(/<time\s*itemprop="cookTime"\s\w*=\"\w*\"><span\s*aria-hidden="true\"><span\s*class=\"prepTime__item--time\">\s*(.*?)<\/span>\s*(.?)<\/span><\/time>/)
+	    ready_time = recipe_link.to_html.scan(/<time\s*itemprop="totalTime"\s\w*=\"\w*\"><span\s*aria-hidden="true\"><span\s*class=\"prepTime__item--time\">\s*(.*?)<\/span>\s*(.?)<\/span><\/time>/)
+			
+	    rec_direction.each do |direct|
+	    	temp_direct.push(direct)
+	    end
+
+			rec_ingredient.each do |ingred|
+				temp_ing.push(ingred[1])
+			end
+
+			@allrecipes_pretime.push(prepare_time)
+			@allrecipes_cooktime.push(cook_time)
+			@allrecipes_readytime.push(ready_time)
+			@all_recipes_ingredients.push(temp_ing)	
+			@allrecipes_dirctions.push(temp_direct)
+		end
+
+		# byebug
+		# @all_recipes.each_with_index do |reci_name, index|
+		# 	byebug
+		# 	rec_info = {
+		# 		recipename: reci_name,
+		# 		recing: all_recipes_ingredients[index],
+		# 		recdir: allrecipes_dirctions[index],
+		# 		recpre: allrecipes_pretime[index],
+		# 		reccook: allrecipes_cooktime[index],
+		# 		recready: allrecipes_readytime[index]
+		# 	}
+		# 	@all_recipes_info.push(rec_info)
+		# end
+		puts @allrecipes_pretime
+		# puts @all_recipes_info
+	end
+
 end
 
 class DbConnection
@@ -75,19 +137,34 @@ class DbConnection
 	def initialize
 		@parsed = Parsing.new
 		@parsed.parcing_categories
+		@parsed.parsing_recipes
+		# @parsed.parsing_recipes_info
 		@db = SQLite3::Database.new 'allrecipes.db'
 	end
 
 	def insert_categories
-		@db.execute("DROP TABLE IF EXISTS allcategories")
-	    @db.execute "CREATE TABLE allcategories(Id INTEGER PRIMARY KEY, Name TEXT,  Link TEXT)"
+		@db.execute "DROP TABLE IF EXISTS allcategories"
+	  @db.execute "CREATE TABLE allcategories(Id INTEGER PRIMARY KEY, Name TEXT,  Link TEXT)"
 
 		@parsed.all_category.each do |i|
 			@db.execute("INSERT INTO allcategories(Name, Link) VALUES('#{i[:name]}',  '#{i[:link]}')")
 		end
 	end
+
+
+	def insert_recipes
+		@db.execute "DROP TABLE IF EXISTS allrecipes"
+		@db.execute "CREATE TABLE allrecipes(Id INTEGER PRIMARY KEY,Recipename TEXT, Recipelink TEXT, RecipeDirection TEXT, RecipePreTime TEXT, RecipeCookTime TEXT, RecipeReadyIn TEXT)"
+
+		@parsed.all_recipes.each do |i|
+			byebug
+			@db.execute('INSERT INTO allrecipes(Recipename, Recipelink) VALUES("'"#{i[:name]}"'", "'"#{i[:link]}"'")')
+    end
+	end
 end
 
 db = DbConnection.new
 db.insert_categories
+db.insert_recipes
 
+# "https":"https":"https":
