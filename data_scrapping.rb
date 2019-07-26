@@ -5,7 +5,7 @@ require 'sqlite3'
 require 'byebug'
 
 class Parsing
-	attr_accessor :all_category, :all_recipes
+	attr_accessor :all_category, :all_recipes, :allrecipes_dirctions, :allrecipes_pretime, :allrecipes_readytime, :allrecipes_cooktime
 
 	def initialize
 		@all_category = []
@@ -89,7 +89,8 @@ class Parsing
 		@all_recipes.each do |i|
 			temp_ing = Array.new
 			temp_direct = Array.new
-			my_link = i[:link].join("")
+			my_link = i[:link]
+			# puts my_link.class
 			recipe_link = Nokogiri::HTML(open(my_link))
 			rec_ingredient = recipe_link.to_html.scan(/(?<=(itemprop="recipeIngredient">))(.*)(?=(<\/span>))/)
 			rec_direction = recipe_link.to_html.scan(/<span\s*class="recipe-directions__list--item\">\s*(.*?)\s*<\/span>/)
@@ -98,7 +99,11 @@ class Parsing
 	    ready_time = recipe_link.to_html.scan(/<time\s*itemprop="totalTime"\s\w*=\"\w*\"><span\s*aria-hidden="true\"><span\s*class=\"prepTime__item--time\">\s*(.*?)<\/span>\s*(.?)<\/span><\/time>/)
 			
 	    rec_direction.each do |direct|
-	    	temp_direct.push(direct)
+	    	# byebug
+	    	directions = direct.join("").gsub(/,/,"")
+	    	directs = directions.gsub("\'","\"")
+	    	temp_direct.push(directs)
+	    	# temp_direct.map { |e| e.gsub(/,/,"")}
 	    end
 
 			rec_ingredient.each do |ingred|
@@ -125,7 +130,8 @@ class Parsing
 		# 	}
 		# 	@all_recipes_info.push(rec_info)
 		# end
-		puts @allrecipes_pretime
+		puts "================"
+		
 		# puts @all_recipes_info
 	end
 
@@ -138,7 +144,8 @@ class DbConnection
 		@parsed = Parsing.new
 		@parsed.parcing_categories
 		@parsed.parsing_recipes
-		# @parsed.parsing_recipes_info
+		@parsed.parsing_recipes_info
+		puts @allrecipes_pretime
 		@db = SQLite3::Database.new 'allrecipes.db'
 	end
 
@@ -153,13 +160,38 @@ class DbConnection
 
 
 	def insert_recipes
+		id = 1
+		count = 1
+		counter = 1
+		identy = 1
 		@db.execute "DROP TABLE IF EXISTS allrecipes"
-		@db.execute "CREATE TABLE allrecipes(Id INTEGER PRIMARY KEY,Recipename TEXT, Recipelink TEXT, RecipeDirection TEXT, RecipePreTime TEXT, RecipeCookTime TEXT, RecipeReadyIn TEXT)"
+		@db.execute "CREATE TABLE allrecipes(Id INTEGER PRIMARY KEY,Recipename TEXT, Recipelink TEXT, RecipeDirection array, RecipePreTime TEXT, RecipeCookTime TEXT, RecipeReadyIn TEXT)"
 
 		@parsed.all_recipes.each do |i|
-			byebug
+			# byebug
 			@db.execute('INSERT INTO allrecipes(Recipename, Recipelink) VALUES("'"#{i[:name]}"'", "'"#{i[:link]}"'")')
     end
+
+    @parsed.allrecipes_dirctions.each do |i|
+    	@db.execute("UPDATE allrecipes SET RecipeDirection = '#{i}' where Id = '#{id}'")
+    	id = id + 1;
+    end
+
+    @parsed.allrecipes_pretime.each do |o|
+    	@db.execute("UPDATE allrecipes SET RecipePreTime = '#{o}' where Id = '#{count}' ")
+    	count = count + 1;
+    end
+
+    @parsed.allrecipes_cooktime.each do |o|
+    	@db.execute("UPDATE allrecipes SET RecipeCookTime = '#{o}' where Id = '#{counter}' ")
+    	counter = counter + 1;
+    end
+
+    @parsed.allrecipes_readytime.each do |o|
+    	@db.execute("UPDATE allrecipes SET RecipeReadyIn = '#{o}' where Id = '#{identy}' ")
+    	identy = identy + 1;
+    end
+
 	end
 end
 
